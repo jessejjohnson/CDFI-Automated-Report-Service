@@ -105,19 +105,21 @@ namespace CDFIService
 
                 if (sourceFiles.Count > 0)
                 {
-                    
                     // Upload Source Files to FTP
                     EventLogMessage.WriteLog("Uploading Files...");
-                    foreach (string strFile in sourceFiles)
+                    foreach (string strExcelFile in sourceFiles)
                     {
-                        EventLogMessage.WriteLog("Uploading File " + strFile + "...");
+                        EventLogMessage.WriteLog("Converting File " + strExcelFile + "...");
+                        string strCsvFile = ExcelToCsvFileHelper.CreateCsvFromExcelFile(strExcelFile);
+
+                        EventLogMessage.WriteLog("Uploading File " + strCsvFile + "...");
                         if (ConfigData.IsSFTP)
                         {
-                            connectorSFTP.UploadExistingFile(strFile);
+                            connectorSFTP.UploadExistingFile(strCsvFile);
                         }
                         else
                         {
-                            connectorFTP.UploadFile(strFile);
+                            connectorFTP.UploadFile(strCsvFile);
                         }
                     }
 
