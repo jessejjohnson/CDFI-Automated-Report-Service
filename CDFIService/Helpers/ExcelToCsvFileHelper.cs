@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Data;
 using System.IO;
 using System.Linq;
@@ -9,16 +10,13 @@ namespace CDFIService.Helpers
 {
     public static class ExcelToCsvFileHelper
     {
-        public static string CreateCsvFromExcelFile(string fullExcelFileName)
+        public static string CreateCsvFromExcelFile(string fullExcelFileName, int headerRowIndex)
         {
-            var excelDataSet = ReadExcelFile(fullExcelFileName);
-
-            var excelContent = excelDataSet.Tables[0];
-
-            var csvContent = ConvertToCsvFormat(excelContent);
+            var excelWorkbook = ReadExcelFile(fullExcelFileName, headerRowIndex);
+            var excelSheet = excelWorkbook.Tables[0];
 
             var fullCsvFileName = BuildFullCsvFileName(fullExcelFileName);
-
+            var csvContent = ConvertToCsvFormat(excelSheet);
             SaveFileWithContent(fullCsvFileName, csvContent);
 
             return fullCsvFileName;
@@ -33,23 +31,49 @@ namespace CDFIService.Helpers
             return Path.Combine(dirName, csvFileName);
         }
 
-        private static DataSet ReadExcelFile(string fullExcelFileName)
+        private static DataSet ReadExcelFile(string fullExcelFileName, int headerRowIndex)
         {
-            using (var stream = File.Open(fullExcelFileName, FileMode.Open, FileAccess.Read))
+            var columnHeaders = new HashSet<string>();
+
+            var dataTableConfiguration = new ExcelDataTableConfiguration()
             {
-                // Auto-detect format, supports:
-                //  - Binary Excel files (2.0-2003 format; *.xls)
-                //  - OpenXml Excel files (2007 format; *.xlsx)
-                using (var reader = ExcelReaderFactory.CreateReader(stream))
+                UseHeaderRow = true,
+                ReadHeaderRow = (rowReader) =>
                 {
-                    return reader.AsDataSet(new ExcelDataSetConfiguration()
+                    while (rowReader.Depth < headerRowIndex - 1)
                     {
-                        ConfigureDataTable = (tableReader) => new ExcelDataTableConfiguration()
-                        {
-                            UseHeaderRow = true
-                        }
-                    });
-                }
+                        rowReader.Read();
+                    }
+                },
+                FilterColumn = (rowReader, columnIndex) =>
+                {
+                    var header = rowReader.GetString(columnIndex);
+                    if (!columnHeaders.Contains(header))
+                    {
+                        columnHeaders.Add(header);
+                        return true;
+                    }
+                    return false;
+                },
+                FilterRow = (rowReader) =>
+                {
+                    var isRowAfterHeaderRow = rowReader.Depth > headerRowIndex - 2;
+                    var isFirstColumnPopulated = !string.IsNullOrWhiteSpace(rowReader.GetString(0));
+
+                    return isRowAfterHeaderRow && isFirstColumnPopulated;
+                },
+            };
+
+            var dataSetConfiguration = new ExcelDataSetConfiguration()
+            {
+                UseColumnDataType = true,
+                ConfigureDataTable = (tableReader) => dataTableConfiguration,
+            };
+
+            using (var stream = new FileStream(fullExcelFileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var reader = ExcelReaderFactory.CreateReader(stream))
+            {
+                return reader.AsDataSet(dataSetConfiguration);
             }
         }
 
@@ -59,16 +83,16 @@ namespace CDFIService.Helpers
 
             var columnNames = tabularData.Columns
                 .Cast<DataColumn>()
-                .Select(column => $"\"{column.ColumnName.ToString().Replace("\"", "\"\"")}\"");
+                .Select(column => column.ColumnName);
 
-            csvFormattedContentBuilder.Append($"{string.Join(",", columnNames)}{Environment.NewLine}");
+            csvFormattedContentBuilder.AppendLine(string.Join(",", columnNames));
 
             foreach (DataRow row in tabularData.Rows)
             {
                 var fields = row.ItemArray
-                    .Select(field => $"\"{field.ToString().Replace("\"", "\"\"")}\"");
+                    .Select(field => field.ToString().Contains(',') ? $"\"{field.ToString()}\"" : field.ToString());
 
-                csvFormattedContentBuilder.Append($"{string.Join(",", fields)}{Environment.NewLine}");
+                csvFormattedContentBuilder.AppendLine(string.Join(",", fields));
             }
 
             return csvFormattedContentBuilder.ToString();

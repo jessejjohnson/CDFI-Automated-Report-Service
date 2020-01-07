@@ -110,7 +110,7 @@ namespace CDFIService
                     foreach (string strExcelFile in sourceFiles)
                     {
                         EventLogMessage.WriteLog("Converting File " + strExcelFile + "...");
-                        string strCsvFile = ExcelToCsvFileHelper.CreateCsvFromExcelFile(strExcelFile);
+                        string strCsvFile = ExcelToCsvFileHelper.CreateCsvFromExcelFile(strExcelFile, 8);
 
                         EventLogMessage.WriteLog("Uploading File " + strCsvFile + "...");
                         if (ConfigData.IsSFTP)
